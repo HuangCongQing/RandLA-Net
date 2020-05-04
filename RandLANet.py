@@ -100,16 +100,20 @@ class Network:
         self.train_writer = tf.summary.FileWriter(config.train_sum_dir, self.sess.graph)
         self.sess.run(tf.global_variables_initializer())
 
-    def inference(self, inputs, is_training):
+    def inference(self, inputs, is_training):  # 各位置feature的shape在注释中
 
         d_out = self.config.d_out
+        # (?,?,6)
         feature = inputs['features']
+        # (?,?,8)
         feature = tf.layers.dense(feature, 8, activation=None, name='fc0')
-        feature = tf.nn.leaky_relu(tf.layers.batch_normalization(feature, -1, 0.99, 1e-6, training=is_training))
+        feature = tf.nn.leaky_relu(tf.layers.batch_normalization(
+            feature, -1, 0.99, 1e-6, training=is_training))
+        # (?,?,1,8)
         feature = tf.expand_dims(feature, axis=2)
-
         # ###########################Encoder############################
         f_encoder_list = []
+        # config.num_layers：[16, 64, 128, 256, 512]
         for i in range(self.config.num_layers):
             f_encoder_i = self.dilated_res_block(feature, inputs['xyz'][i], inputs['neigh_idx'][i], d_out[i],
                                                  'Encoder_layer_' + str(i), is_training)
@@ -257,7 +261,7 @@ class Network:
         log_out('-' * len(s) + '\n', self.Log_file)
         return mean_iou
 
-    def get_loss(self, logits, labels, pre_cal_weights):
+    def get_loss(self, logits, labels, pre_cal_weights):  # 用交叉熵损失。最后乘以每个点的权重。
         # calculate the weighted cross entropy according to the inverse frequency
         class_weights = tf.convert_to_tensor(pre_cal_weights, dtype=tf.float32)
         one_hot_labels = tf.one_hot(labels, depth=self.config.num_classes)
@@ -267,30 +271,48 @@ class Network:
         output_loss = tf.reduce_mean(weighted_losses)
         return output_loss
 
-    def dilated_res_block(self, feature, xyz, neigh_idx, d_out, name, is_training):
+    def dilated_res_block(self, feature, xyz, neigh_idx, d_out, name, is_training): # 参照Dilated Residual Block结构图
+        # Shared MLP（N,dout/2）
         f_pc = helper_tf_util.conv2d(feature, d_out // 2, [1, 1], name + 'mlp1', [1, 1], 'VALID', True, is_training)
+        # 局部特征聚合模块（ LoscSe,Attenntive Pooling）
         f_pc = self.building_block(xyz, f_pc, neigh_idx, d_out, name + 'LFA', is_training)
+        # Shared MLP (N,2dout)
         f_pc = helper_tf_util.conv2d(f_pc, d_out * 2, [1, 1], name + 'mlp2', [1, 1], 'VALID', True, is_training,
                                      activation_fn=None)
+        # Shared MLP (N,2dout)
         shortcut = helper_tf_util.conv2d(feature, d_out * 2, [1, 1], name + 'shortcut', [1, 1], 'VALID',
                                          activation_fn=None, bn=True, is_training=is_training)
+        # sum,lrelu
         return tf.nn.leaky_relu(f_pc + shortcut)
 
     def building_block(self, xyz, feature, neigh_idx, d_out, name, is_training):
+        # LocSE
         d_in = feature.get_shape()[-1].value
+        # Relative Point Position Encoding
         f_xyz = self.relative_pos_encoding(xyz, neigh_idx)
-        f_xyz = helper_tf_util.conv2d(f_xyz, d_in, [1, 1], name + 'mlp1', [1, 1], 'VALID', True, is_training)
-        f_neighbours = self.gather_neighbour(tf.squeeze(feature, axis=2), neigh_idx)
+        f_xyz = helper_tf_util.conv2d(
+            f_xyz, d_in, [1, 1], name + 'mlp1', [1, 1], 'VALID', True, is_training)
+        f_neighbours = self.gather_neighbour(
+            tf.squeeze(feature, axis=2), neigh_idx)
         f_concat = tf.concat([f_neighbours, f_xyz], axis=-1)
-        f_pc_agg = self.att_pooling(f_concat, d_out // 2, name + 'att_pooling_1', is_training)
+        # Attentive Pooling
+        f_pc_agg = self.att_pooling(
+            f_concat, d_out // 2, name + 'att_pooling_1', is_training)
 
-        f_xyz = helper_tf_util.conv2d(f_xyz, d_out // 2, [1, 1], name + 'mlp2', [1, 1], 'VALID', True, is_training)
-        f_neighbours = self.gather_neighbour(tf.squeeze(f_pc_agg, axis=2), neigh_idx)
+        f_xyz = helper_tf_util.conv2d(
+            f_xyz, d_out // 2, [1, 1], name + 'mlp2', [1, 1], 'VALID', True, is_training)
+        f_neighbours = self.gather_neighbour(
+            tf.squeeze(f_pc_agg, axis=2), neigh_idx)
         f_concat = tf.concat([f_neighbours, f_xyz], axis=-1)
-        f_pc_agg = self.att_pooling(f_concat, d_out, name + 'att_pooling_2', is_training)
+        f_pc_agg = self.att_pooling(
+            f_concat, d_out, name + 'att_pooling_2', is_training)
         return f_pc_agg
 
     def relative_pos_encoding(self, xyz, neigh_idx):
+        '''
+        xyz：个点的xyz坐标信息
+        neigh_idx：近邻点 
+        '''
         neighbor_xyz = self.gather_neighbour(xyz, neigh_idx)
         xyz_tile = tf.tile(tf.expand_dims(xyz, axis=2), [1, 1, tf.shape(neigh_idx)[-1], 1])
         relative_xyz = xyz_tile - neighbor_xyz
@@ -299,7 +321,7 @@ class Network:
         return relative_feature
 
     @staticmethod
-    def random_sample(feature, pool_idx):
+    def random_sample(feature, pool_idx):  # 随机采样
         """
         :param feature: [B, N, d] input features matrix
         :param pool_idx: [B, N', max_num] N' < N, N' is the selected position after pooling
@@ -331,7 +353,7 @@ class Network:
         return interpolated_features
 
     @staticmethod
-    def gather_neighbour(pc, neighbor_idx):
+    def gather_neighbour(pc, neighbor_idx):# 获取各个近邻点数据
         # gather the coordinates or features of neighboring points
         batch_size = tf.shape(pc)[0]
         num_points = tf.shape(pc)[1]
@@ -343,6 +365,10 @@ class Network:
 
     @staticmethod
     def att_pooling(feature_set, d_out, name, is_training):
+        '''  
+        feature_set:LocSe模块的输出
+        d_out：输出的通道数
+        '''
         batch_size = tf.shape(feature_set)[0]
         num_points = tf.shape(feature_set)[1]
         num_neigh = tf.shape(feature_set)[2]
