@@ -1,3 +1,11 @@
+'''
+@Description: 
+@Author: HCQ
+@Company(School): UCAS
+@Date: 2020-05-04 18:18:08
+@LastEditors: HCQ
+@LastEditTime: 2020-05-07 10:29:48
+'''
 import pickle, yaml, os, sys
 import numpy as np
 from os.path import join, exists, dirname, abspath
@@ -17,8 +25,8 @@ remap_lut = np.zeros((max_key + 100), dtype=np.int32)
 remap_lut[list(remap_dict.keys())] = list(remap_dict.values())
 
 grid_size = 0.06
-dataset_path = '/data/semantic_kitti/dataset/sequences'
-output_path = '/data/semantic_kitti/dataset/sequences' + '_' + str(grid_size)
+dataset_path = '/data/zcq19/SemanticKITTI/sequences'
+output_path = '/data/zcq19/SemanticKITTI/sequences' + '_' + str(grid_size)
 seq_list = np.sort(os.listdir(dataset_path))
 
 for seq_id in seq_list:
