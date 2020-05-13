@@ -32,7 +32,7 @@ class ConfigSemanticKITTI:
     num_sub_points = [num_points // 4, num_points // 16, num_points // 64, num_points // 256]
 
     noise_init = 3.5  # noise initial parameter
-    max_epoch = 2  # maximum epoch during training
+    max_epoch = 5  # maximum epoch during training
     learning_rate = 1e-2  # initial learning rate
     lr_decays = {i: 0.95 for i in range(0, 500)}  # decay rate of learning rate
 
