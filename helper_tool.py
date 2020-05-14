@@ -12,7 +12,7 @@ sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 
 import cpp_wrappers.cpp_subsampling.grid_subsampling as cpp_subsampling
-import nearest_neighbors.lib.python.nearest_neighbors as nearest_neighbors
+import nearest_neighbors.lib.python.nearest_neighbors as nearest_neighbors # C++ 编译文件
 
 
 class ConfigSemanticKITTI:
@@ -155,6 +155,7 @@ class DataProcessing:
         return train_file_list, val_file_list, test_file_list
 
     @staticmethod
+    # 通过main_S3DIS.py或者其他main_.py文件通过import DataProcessing as DP调用DP.knn_search
     def knn_search(support_pts, query_pts, k):
         """
         :param support_pts: points you have, B*N1*3
